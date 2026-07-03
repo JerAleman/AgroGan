@@ -3,15 +3,22 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 export interface TenantStore {
   tenantId: string;
   userId?: string;
-  roles?: string[];
+  role?: string;
 }
 
 /**
  * Contexto de tenant por request usando AsyncLocalStorage.
- * Se puebla en TenantMiddleware a partir del JWT de Cognito y se propaga
- * a PrismaService (para fijar RLS) y al resto de la aplicación.
+ * Se puebla en AuthGuard a partir del JWT y se propaga a servicios/Prisma.
  */
 export const tenantStorage = new AsyncLocalStorage<TenantStore>();
+
+export function runWithTenant<T>(store: TenantStore, fn: () => T): T {
+  return tenantStorage.run(store, fn);
+}
+
+export function getTenantStore(): TenantStore | undefined {
+  return tenantStorage.getStore();
+}
 
 export function getTenantId(): string {
   const store = tenantStorage.getStore();
@@ -19,4 +26,8 @@ export function getTenantId(): string {
     throw new Error('Tenant context no inicializado (falta tenantId).');
   }
   return store.tenantId;
+}
+
+export function getUserId(): string | undefined {
+  return tenantStorage.getStore()?.userId;
 }

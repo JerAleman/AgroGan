@@ -1,25 +1,41 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { getTenantId } from '../tenant/tenant-context';
 
 /**
- * PrismaService con enforcement de Row Level Security.
+ * PrismaService.
  *
- * `forTenant()` ejecuta las operaciones dentro de una transacción que fija
- * `app.current_tenant`, de modo que las políticas RLS de PostgreSQL filtran
- * automáticamente por tenant_id. Es la última línea de defensa de aislamiento,
- * independiente de la lógica de aplicación.
+ * - DEV (SQLite): el aislamiento multi-tenant se aplica en la capa de servicios,
+ *   que siempre filtran por tenantId (helper `tenantId()`), reforzado por tests
+ *   de aislamiento.
+ * - PROD (PostgreSQL/Aurora): además se activa Row Level Security; `forTenant`
+ *   fija `app.current_tenant` dentro de una transacción (última línea de defensa).
  */
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit {
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     await this.$connect();
   }
 
+  async onModuleDestroy() {
+    await this.$disconnect();
+  }
+
+  /** tenantId del contexto actual, para usar en cláusulas where/data. */
+  tenantId(): string {
+    return getTenantId();
+  }
+
+  /**
+   * Ejecuta operaciones con RLS activa (solo Postgres). En SQLite es un
+   * passthrough transaccional para mantener la misma firma en el código.
+   */
   async forTenant<T>(fn: (tx: PrismaClient) => Promise<T>): Promise<T> {
-    const tenantId = getTenantId();
+    const provider = process.env.DATABASE_URL?.startsWith('postgres');
     return this.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe(`SET LOCAL app.current_tenant = '${tenantId}'`);
+      if (provider) {
+        await tx.$executeRawUnsafe(`SET LOCAL app.current_tenant = '${getTenantId()}'`);
+      }
       return fn(tx as unknown as PrismaClient);
     });
   }

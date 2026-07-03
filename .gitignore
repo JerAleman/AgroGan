@@ -16,8 +16,14 @@ cdk.out/
 .env.*.local
 *.pem
 
-# Prisma
+# Prisma / SQLite
+**/*.db
+**/*.db-journal
 prisma/*.db
+
+# Next.js
+next-env.d.ts
+*.tsbuildinfo
 
 # Logs
 *.log

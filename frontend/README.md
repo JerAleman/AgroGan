@@ -1,46 +1,50 @@
 # Frontend — Agro360 Cloud
 
-Web app en **Next.js (App Router) + TypeScript + Tailwind + shadcn/ui**, con **TanStack Query** (server state), **Zustand** (estado local/offline) y **Mapbox/MapLibre** para GIS. Empaquetada como **PWA** para soporte offline.
+Web app en **Next.js 14 (App Router) + TypeScript + Tailwind**, conectada al backend NestJS.
 
-## Estructura sugerida
+## Pantallas implementadas (MVP)
+
+| Ruta | Descripción |
+|------|-------------|
+| `/login` | Inicio de sesión (JWT) con credenciales demo precargadas |
+| `/dashboard` | KPIs (superficie, hacienda, margen bruto, alertas), stock por categoría, margen por campaña |
+| `/ganaderia` | Existencias de hacienda por categoría |
+| `/inventario` | Stock de insumos con alertas de mínimo (semáforo) |
+| `/copiloto` | Copiloto Campo AI: chat en lenguaje natural con explicabilidad |
+
+## Estructura
 
 ```
 frontend/
 ├── src/
-│   ├── app/                        # rutas (App Router)
-│   │   ├── (auth)/login/
-│   │   ├── (app)/dashboard/
-│   │   ├── (app)/ganaderia/
-│   │   ├── (app)/agricultura/
-│   │   ├── (app)/inventario/
-│   │   ├── (app)/maquinaria/
-│   │   ├── (app)/copiloto/         # Copiloto Campo AI
-│   │   └── (app)/reportes/
-│   ├── components/                 # UI (shadcn/ui) + componentes de dominio
-│   ├── features/                   # lógica por dominio (hooks, queries, stores)
-│   ├── lib/
-│   │   ├── api/                    # cliente API tipado (desde OpenAPI)
-│   │   ├── auth/                   # integración Cognito (Amplify/aws-sdk)
-│   │   └── offline/                # cola local (Dexie/IndexedDB) + sync
-│   └── styles/
-├── public/
-│   ├── manifest.webmanifest        # PWA
-│   └── sw.js                       # service worker (o via next-pwa)
-├── package.json
-└── next.config.mjs
+│   ├── app/
+│   │   ├── layout.tsx            # layout raíz
+│   │   ├── page.tsx              # redirección según sesión
+│   │   ├── login/page.tsx
+│   │   └── (app)/               # área autenticada (sidebar + guardia de sesión)
+│   │       ├── layout.tsx
+│   │       ├── dashboard/page.tsx
+│   │       ├── ganaderia/page.tsx
+│   │       ├── inventario/page.tsx
+│   │       └── copiloto/page.tsx
+│   └── lib/
+│       └── api.ts               # cliente HTTP + manejo de token JWT
+├── next.config.mjs              # NEXT_PUBLIC_API_URL (default http://localhost:3000/v1)
+├── tailwind.config.ts
+└── package.json
 ```
 
-## Puntos clave
-- **Tipos de API** generados desde `../infra/openapi.yaml` (openapi-typescript) para un cliente tipado end-to-end.
-- **Tableros por rol**: el layout carga widgets según permisos del usuario.
-- **GIS**: MapLibre GL como opción sin lock-in de costos (alternativa a Mapbox).
-- **PWA offline**: service worker + IndexedDB; ver `mobile/` para la estrategia de sync compartida.
-- **i18n**: español LATAM; formatos por país (moneda/fecha/número).
+## Ejecutar
 
-## Scripts
 ```bash
 npm install
-npm run dev       # desarrollo local (no ejecutar en el sandbox)
-npm run build
-npm run lint
+# Backend debe estar corriendo en http://localhost:3000/v1 (ver ../backend)
+npm run dev        # http://localhost:3000  (Next elige otro puerto si 3000 está ocupado)
+npm run build      # build de producción (verificado)
 ```
+
+> Configurá `NEXT_PUBLIC_API_URL` si el backend corre en otra URL.
+
+## Roadmap frontend
+- PWA offline + cola de sincronización (IndexedDB) — ver `mobile/`
+- Mapa GIS (MapLibre), altas/edición desde UI, importación Excel, tableros por rol.

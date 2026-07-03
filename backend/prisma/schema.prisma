@@ -1,124 +1,392 @@
-// Agro360 Cloud — Prisma schema (extracto MVP).
-// Modelo completo: ver docs/04-data-model.md
-// Todas las tablas de negocio incluyen tenantId + política RLS (aplicada por migración SQL).
+// Agro360 Cloud — Prisma schema (MVP).
+//
+// DEV: SQLite (ejecutable en cualquier entorno, sin dependencias externas).
+// PROD: Aurora PostgreSQL + Row Level Security por tenant_id (ver
+//       prisma/migrations/0001_enable_rls/migration.sql y docs/03-architecture.md).
+//
+// En SQLite el aislamiento multi-tenant se hace a nivel de aplicación:
+// todos los servicios filtran por tenantId (getTenantId()) y hay tests que
+// verifican que un tenant no accede a datos de otro. En Postgres, la RLS es la
+// última línea de defensa adicional.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
-model Tenant {
-  id              String   @id @default(uuid()) @db.Uuid
-  name            String
-  country         String
-  defaultCurrency String   @map("default_currency")
-  locale          String   @default("es-AR")
-  tenancyModel    String   @default("pooled") @map("tenancy_model")
-  status          String   @default("active")
-  createdAt       DateTime @default(now()) @map("created_at")
+// ─────────────────────────── Plataforma / IAM ───────────────────────────
 
-  @@map("tenant")
+model Tenant {
+  id              String   @id @default(uuid())
+  name            String
+  country         String   @default("AR")
+  defaultCurrency String   @default("ARS")
+  locale          String   @default("es-AR")
+  tenancyModel    String   @default("pooled") // pooled | bridge | silo
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+
+  users           User[]
+  companies       Company[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  fullName     String
+  role         String   @default("owner") // owner | admin | field_manager | livestock_manager | agri_manager | operator | vet | agronomist | accountant | consultant
+  status       String   @default("active")
+  createdAt    DateTime @default(now())
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([email])
+  @@index([tenantId])
+}
+
+// ─────────────────────────── Organización / Campo ───────────────────────────
+
+model Company {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  taxId     String?
+  country   String   @default("AR")
+  createdAt DateTime @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  farms     Farm[]
+
+  @@index([tenantId])
+}
+
+model Farm {
+  id        String   @id @default(uuid())
+  tenantId  String
+  companyId String
+  name      String
+  createdAt DateTime @default(now())
+
+  company        Company         @relation(fields: [companyId], references: [id])
+  establishments Establishment[]
+
+  @@index([tenantId])
 }
 
 model Establishment {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  farmId      String   @map("farm_id") @db.Uuid
+  id          String   @id @default(uuid())
+  tenantId    String
+  farmId      String
   name        String
-  totalAreaHa Decimal? @map("total_area_ha") @db.Decimal(12, 2)
-  createdAt   DateTime @default(now()) @map("created_at")
+  totalAreaHa Float    @default(0)
+  createdAt   DateTime @default(now())
+
+  farm       Farm             @relation(fields: [farmId], references: [id])
+  lots       Lot[]
+  paddocks   Paddock[]
+  warehouses InventoryWarehouse[]
+  herds      Herd[]
+  campaigns  CropCampaign[]
 
   @@index([tenantId])
-  @@map("establishment")
 }
 
-model LivestockCategory {
-  id       String  @id @default(uuid()) @db.Uuid
-  tenantId String  @map("tenant_id") @db.Uuid
-  name     String
-  species  String
-  sex      String?
+model Lot {
+  id              String   @id @default(uuid())
+  tenantId        String
+  establishmentId String
+  name            String
+  areaHa          Float    @default(0)
+  createdAt       DateTime @default(now())
+
+  establishment Establishment          @relation(fields: [establishmentId], references: [id])
+  activities    AgriculturalActivity[]
 
   @@index([tenantId])
-  @@map("livestock_category")
 }
 
-model LivestockBatch {
-  id         String   @id @default(uuid()) @db.Uuid
-  tenantId   String   @map("tenant_id") @db.Uuid
-  herdId     String?  @map("herd_id") @db.Uuid
-  categoryId String?  @map("category_id") @db.Uuid
-  paddockId  String?  @map("paddock_id") @db.Uuid
-  headCount  Int      @map("head_count")
-  avgWeight  Decimal? @map("avg_weight") @db.Decimal(10, 2)
-  entryDate  DateTime @default(now()) @map("entry_date")
+model Paddock {
+  id              String   @id @default(uuid())
+  tenantId        String
+  establishmentId String
+  name            String
+  areaHa          Float    @default(0)
+  forageType      String?
+  createdAt       DateTime @default(now())
+
+  establishment Establishment    @relation(fields: [establishmentId], references: [id])
+  batches       LivestockBatch[]
 
   @@index([tenantId])
-  @@map("livestock_batch")
 }
 
-model WeighingEvent {
-  id         String   @id @default(uuid()) @db.Uuid
-  tenantId   String   @map("tenant_id") @db.Uuid
-  batchId    String?  @map("batch_id") @db.Uuid
-  animalId   String?  @map("animal_id") @db.Uuid
-  date       DateTime
-  weight     Decimal  @db.Decimal(10, 2)
-  method     String   @default("manual")
-  clientUuid String?  @map("client_uuid")
-
-  @@unique([tenantId, clientUuid])
-  @@index([tenantId, date])
-  @@map("weighing_event")
-}
-
-model HealthEvent {
-  id          String    @id @default(uuid()) @db.Uuid
-  tenantId    String    @map("tenant_id") @db.Uuid
-  batchId     String?   @map("batch_id") @db.Uuid
-  animalId    String?   @map("animal_id") @db.Uuid
-  date        DateTime
-  type        String
-  productId   String?   @map("product_id") @db.Uuid
-  dose        Decimal?  @db.Decimal(10, 2)
-  nextDueDate DateTime? @map("next_due_date")
-  clientUuid  String?   @map("client_uuid")
-
-  @@unique([tenantId, clientUuid])
-  @@index([tenantId, date])
-  @@map("health_event")
-}
+// ─────────────────────────── Inventario ───────────────────────────
 
 model InputProduct {
-  id       String   @id @default(uuid()) @db.Uuid
-  tenantId String   @map("tenant_id") @db.Uuid
-  name     String
-  category String
-  unit     String
-  minStock Decimal? @map("min_stock") @db.Decimal(14, 2)
-  avgCost  Decimal? @map("avg_cost") @db.Decimal(18, 4)
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  category  String // fitosanitario | fertilizante | semilla | vacuna | medicamento | suplemento | combustible | repuesto | herramienta
+  unit      String   @default("un")
+  minStock  Float    @default(0)
+  avgCost   Float    @default(0)
+  currency  String   @default("ARS")
+  createdAt DateTime @default(now())
+
+  movements InventoryMovement[]
 
   @@index([tenantId])
-  @@map("input_product")
+}
+
+model InventoryWarehouse {
+  id              String   @id @default(uuid())
+  tenantId        String
+  establishmentId String
+  name            String
+  createdAt       DateTime @default(now())
+
+  establishment Establishment       @relation(fields: [establishmentId], references: [id])
+  movements     InventoryMovement[]
+
+  @@index([tenantId])
 }
 
 model InventoryMovement {
-  id         String   @id @default(uuid()) @db.Uuid
-  tenantId   String   @map("tenant_id") @db.Uuid
-  productId  String   @map("product_id") @db.Uuid
-  type       String // in | out | transfer | adjust
-  qty        Decimal  @db.Decimal(14, 2)
-  unitCost   Decimal? @map("unit_cost") @db.Decimal(18, 4)
-  sourceType String?  @map("source_type")
-  sourceId   String?  @map("source_id") @db.Uuid
-  date       DateTime @default(now())
-  clientUuid String?  @map("client_uuid")
+  id          String   @id @default(uuid())
+  tenantId    String
+  warehouseId String
+  productId   String
+  type        String // in | out | transfer | adjust
+  qty         Float
+  unitCost    Float    @default(0)
+  sourceType  String? // purchase | health_event | nutrition_event | work_order | manual
+  sourceId    String?
+  date        DateTime @default(now())
+  clientUuid  String?
+
+  warehouse InventoryWarehouse @relation(fields: [warehouseId], references: [id])
+  product   InputProduct       @relation(fields: [productId], references: [id])
 
   @@unique([tenantId, clientUuid])
   @@index([tenantId, date])
-  @@map("inventory_movement")
+  @@index([tenantId, productId])
+}
+
+// ─────────────────────────── Ganadería ───────────────────────────
+
+model LivestockCategory {
+  id       String @id @default(uuid())
+  tenantId String
+  name     String
+  species  String @default("bovino")
+  sex      String?
+
+  batches   LivestockBatch[]
+  movements LivestockMovement[]
+
+  @@index([tenantId])
+}
+
+model Herd {
+  id              String   @id @default(uuid())
+  tenantId        String
+  establishmentId String
+  name            String
+  purpose         String   @default("cria") // cria | recria | engorde | feedlot | tambo
+  createdAt       DateTime @default(now())
+
+  establishment Establishment    @relation(fields: [establishmentId], references: [id])
+  batches       LivestockBatch[]
+
+  @@index([tenantId])
+}
+
+model LivestockBatch {
+  id         String   @id @default(uuid())
+  tenantId   String
+  herdId     String
+  categoryId String
+  paddockId  String?
+  headCount  Int      @default(0)
+  avgWeight  Float    @default(0)
+  entryDate  DateTime @default(now())
+
+  herd     Herd              @relation(fields: [herdId], references: [id])
+  category LivestockCategory @relation(fields: [categoryId], references: [id])
+  paddock  Paddock?          @relation(fields: [paddockId], references: [id])
+
+  weighings    WeighingEvent[]
+  healthEvents HealthEvent[]
+  movements    LivestockMovement[]
+
+  @@index([tenantId])
+  @@index([tenantId, categoryId])
+}
+
+model LivestockMovement {
+  id         String   @id @default(uuid())
+  tenantId   String
+  batchId    String?
+  categoryId String
+  type       String // purchase | sale | birth | death | transfer | category_change
+  headCount  Int
+  weight     Float    @default(0)
+  amount     Float    @default(0)
+  date       DateTime @default(now())
+  notes      String?
+  clientUuid String?
+
+  batch    LivestockBatch?   @relation(fields: [batchId], references: [id])
+  category LivestockCategory @relation(fields: [categoryId], references: [id])
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, date])
+  @@index([tenantId, type])
+}
+
+model WeighingEvent {
+  id         String   @id @default(uuid())
+  tenantId   String
+  batchId    String
+  date       DateTime @default(now())
+  weight     Float
+  method     String   @default("manual") // manual | rfid | scale
+  adg        Float    @default(0) // ganancia diaria de peso (kg/día)
+  clientUuid String?
+
+  batch LivestockBatch @relation(fields: [batchId], references: [id])
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, date])
+}
+
+model HealthEvent {
+  id          String    @id @default(uuid())
+  tenantId    String
+  batchId     String
+  date        DateTime  @default(now())
+  type        String // vacuna | tratamiento | diagnostico
+  productId   String?
+  dose        Float?
+  headCount   Int       @default(0)
+  nextDueDate DateTime?
+  clientUuid  String?
+
+  batch LivestockBatch @relation(fields: [batchId], references: [id])
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, date])
+}
+
+// ─────────────────────────── Agricultura ───────────────────────────
+
+model Crop {
+  id       String @id @default(uuid())
+  tenantId String
+  name     String
+  species  String?
+
+  campaigns CropCampaign[]
+
+  @@index([tenantId])
+}
+
+model CropCampaign {
+  id              String   @id @default(uuid())
+  tenantId        String
+  establishmentId String
+  cropId          String
+  season          String // ej "24/25"
+  plannedAreaHa   Float    @default(0)
+  sowingDate      DateTime?
+  expectedYield   Float    @default(0)
+  revenue         Float    @default(0)
+  status          String   @default("planned") // planned | active | closed
+  createdAt       DateTime @default(now())
+
+  establishment Establishment          @relation(fields: [establishmentId], references: [id])
+  crop          Crop                   @relation(fields: [cropId], references: [id])
+  activities    AgriculturalActivity[]
+
+  @@index([tenantId])
+}
+
+model AgriculturalActivity {
+  id         String   @id @default(uuid())
+  tenantId   String
+  campaignId String
+  lotId      String
+  type       String // siembra | fumigacion | fertilizacion | cosecha | riego
+  date       DateTime @default(now())
+  areaHa     Float    @default(0)
+  costDirect Float    @default(0)
+  yieldResult Float   @default(0)
+  status     String   @default("done")
+  clientUuid String?
+
+  campaign CropCampaign @relation(fields: [campaignId], references: [id])
+  lot      Lot          @relation(fields: [lotId], references: [id])
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId])
+}
+
+// ─────────────────────────── IA / Alertas / Auditoría ───────────────────────────
+
+model Alert {
+  id        String   @id @default(uuid())
+  tenantId  String
+  type      String // stock | sanitary | weight | reproductive | financial | climate
+  severity  String   @default("medium") // low | medium | high
+  message   String
+  entityRef String?
+  status    String   @default("open") // open | ack | resolved
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, status])
+}
+
+model AiConversation {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  messages AiMessage[]
+
+  @@index([tenantId])
+}
+
+model AiMessage {
+  id             String   @id @default(uuid())
+  tenantId       String
+  conversationId String
+  role           String // user | assistant
+  content        String
+  dataUsed       String? // JSON serializado (fuentes/consultas)
+  confidence     Float    @default(0)
+  createdAt      DateTime @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id])
+
+  @@index([tenantId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  isAi       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
 }
