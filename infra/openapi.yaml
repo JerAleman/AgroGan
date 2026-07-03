@@ -1,0 +1,419 @@
+openapi: 3.0.3
+info:
+  title: Agro360 Cloud API
+  version: 1.0.0
+  description: >
+    API REST multi-tenant para la plataforma de gestión agropecuaria Agro360 Cloud.
+    El tenant_id se deriva SIEMPRE del JWT (claim custom:tenant_id); nunca se acepta
+    por query o body. Los endpoints de escritura de eventos son idempotentes vía
+    header Idempotency-Key (o campo clientUuid) para soportar sincronización offline.
+  contact:
+    name: Agro360 Cloud
+servers:
+  - url: https://api.agro360.cloud/v1
+    description: Producción
+  - url: https://staging-api.agro360.cloud/v1
+    description: Staging
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Organization
+  - name: Livestock
+  - name: Inventory
+  - name: Agriculture
+  - name: Machinery
+  - name: AI
+  - name: Sync
+  - name: Reports
+
+paths:
+  /auth/register-tenant:
+    post:
+      tags: [Auth]
+      summary: Alta self-service de empresa (tenant) + usuario admin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterTenantRequest'
+      responses:
+        '201':
+          description: Tenant creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+        '400': { $ref: '#/components/responses/Problem' }
+
+  /me:
+    get:
+      tags: [Auth]
+      summary: Perfil del usuario autenticado
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+
+  /establishments:
+    get:
+      tags: [Organization]
+      summary: Lista establecimientos del tenant
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Establishment' }
+                  nextCursor: { type: string, nullable: true }
+    post:
+      tags: [Organization]
+      summary: Crea un establecimiento
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EstablishmentInput' }
+      responses:
+        '201':
+          description: Creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Establishment' }
+
+  /livestock/stock:
+    get:
+      tags: [Livestock]
+      summary: Stock ganadero por categoría a una fecha
+      parameters:
+        - in: query
+          name: establishmentId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: categoryId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StockByCategory' }
+
+  /livestock/weighings:
+    post:
+      tags: [Livestock]
+      summary: Registra una pesada (idempotente / offline-safe)
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WeighingInput' }
+      responses:
+        '201':
+          description: Creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WeighingEvent' }
+
+  /livestock/health-events:
+    post:
+      tags: [Livestock]
+      summary: Registra evento sanitario (descuenta stock automáticamente)
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HealthEventInput' }
+      responses:
+        '201':
+          description: Creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthEvent' }
+
+  /inventory/movements:
+    post:
+      tags: [Inventory]
+      summary: Registra movimiento de inventario (in/out/transfer/adjust)
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InventoryMovementInput' }
+      responses:
+        '201':
+          description: Creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryMovement' }
+
+  /work-orders/{id}/complete:
+    post:
+      tags: [Agriculture]
+      summary: Completa una orden de trabajo y dispara consumo de inventario
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Completada }
+
+  /ai/conversations/{id}/messages:
+    post:
+      tags: [AI]
+      summary: Pregunta en lenguaje natural al copiloto (respuesta con explicabilidad)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AIAnswer' }
+
+  /sync/batch:
+    post:
+      tags: [Sync]
+      summary: Sincroniza un lote de eventos offline (idempotente por clientUuid)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                events:
+                  type: array
+                  items: { $ref: '#/components/schemas/SyncEvent' }
+      responses:
+        '200':
+          description: Resultado por evento
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    clientUuid: { type: string }
+                    status: { type: string, enum: [applied, duplicate, rejected] }
+                    id: { type: string, format: uuid, nullable: true }
+
+  /reports/livestock-summary:
+    get:
+      tags: [Reports]
+      summary: Resumen ganadero
+      parameters:
+        - in: query
+          name: establishmentId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses:
+        '200': { description: OK }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    limit:
+      in: query
+      name: limit
+      schema: { type: integer, default: 50, maximum: 200 }
+    cursor:
+      in: query
+      name: cursor
+      schema: { type: string }
+    idempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: false
+      schema: { type: string }
+
+  responses:
+    Problem:
+      description: Error (RFC 7807)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        traceId: { type: string }
+
+    RegisterTenantRequest:
+      type: object
+      required: [companyName, country, adminEmail]
+      properties:
+        companyName: { type: string }
+        country: { type: string, example: AR }
+        defaultCurrency: { type: string, example: ARS }
+        adminEmail: { type: string, format: email }
+        adminFullName: { type: string }
+
+    Tenant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        country: { type: string }
+        defaultCurrency: { type: string }
+        tenancyModel: { type: string, enum: [pooled, bridge, silo] }
+        status: { type: string }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        fullName: { type: string }
+        roles: { type: array, items: { type: string } }
+
+    EstablishmentInput:
+      type: object
+      required: [farmId, name]
+      properties:
+        farmId: { type: string, format: uuid }
+        name: { type: string }
+        totalAreaHa: { type: number }
+    Establishment:
+      allOf:
+        - $ref: '#/components/schemas/EstablishmentInput'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+
+    StockByCategory:
+      type: object
+      properties:
+        categoryId: { type: string, format: uuid }
+        categoryName: { type: string }
+        headCount: { type: integer }
+        avgWeight: { type: number }
+
+    WeighingInput:
+      type: object
+      required: [date, weight]
+      properties:
+        batchId: { type: string, format: uuid }
+        animalId: { type: string, format: uuid }
+        date: { type: string, format: date-time }
+        weight: { type: number }
+        method: { type: string, enum: [manual, rfid, scale] }
+        clientUuid: { type: string }
+    WeighingEvent:
+      allOf:
+        - $ref: '#/components/schemas/WeighingInput'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            adg: { type: number, description: Ganancia diaria de peso (kg/día) }
+
+    HealthEventInput:
+      type: object
+      required: [date, type]
+      properties:
+        batchId: { type: string, format: uuid }
+        animalId: { type: string, format: uuid }
+        date: { type: string, format: date-time }
+        type: { type: string, enum: [vacuna, tratamiento, diagnostico] }
+        productId: { type: string, format: uuid }
+        dose: { type: number }
+        nextDueDate: { type: string, format: date }
+        clientUuid: { type: string }
+    HealthEvent:
+      allOf:
+        - $ref: '#/components/schemas/HealthEventInput'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            inventoryMovementId: { type: string, format: uuid, nullable: true }
+
+    InventoryMovementInput:
+      type: object
+      required: [warehouseId, productId, type, qty]
+      properties:
+        warehouseId: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        type: { type: string, enum: [in, out, transfer, adjust] }
+        qty: { type: number }
+        unitCost: { type: number }
+        clientUuid: { type: string }
+    InventoryMovement:
+      allOf:
+        - $ref: '#/components/schemas/InventoryMovementInput'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+
+    AIAnswer:
+      type: object
+      properties:
+        answer: { type: string }
+        explainability:
+          type: object
+          properties:
+            dataUsed: { type: array, items: { type: string } }
+            assumptions: { type: array, items: { type: string } }
+            confidence: { type: number }
+        mode: { type: string, enum: [recommend, execute_approved] }
+        auditId: { type: string, format: uuid }
+
+    SyncEvent:
+      type: object
+      required: [clientUuid, entity, payload]
+      properties:
+        clientUuid: { type: string }
+        entity: { type: string, enum: [weighing, movement, health-event, nutrition-event, work-order] }
+        payload: { type: object, additionalProperties: true }

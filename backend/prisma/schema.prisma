@@ -1,0 +1,124 @@
+// Agro360 Cloud — Prisma schema (extracto MVP).
+// Modelo completo: ver docs/04-data-model.md
+// Todas las tablas de negocio incluyen tenantId + política RLS (aplicada por migración SQL).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  country         String
+  defaultCurrency String   @map("default_currency")
+  locale          String   @default("es-AR")
+  tenancyModel    String   @default("pooled") @map("tenancy_model")
+  status          String   @default("active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("tenant")
+}
+
+model Establishment {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  farmId      String   @map("farm_id") @db.Uuid
+  name        String
+  totalAreaHa Decimal? @map("total_area_ha") @db.Decimal(12, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@map("establishment")
+}
+
+model LivestockCategory {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  name     String
+  species  String
+  sex      String?
+
+  @@index([tenantId])
+  @@map("livestock_category")
+}
+
+model LivestockBatch {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  herdId     String?  @map("herd_id") @db.Uuid
+  categoryId String?  @map("category_id") @db.Uuid
+  paddockId  String?  @map("paddock_id") @db.Uuid
+  headCount  Int      @map("head_count")
+  avgWeight  Decimal? @map("avg_weight") @db.Decimal(10, 2)
+  entryDate  DateTime @default(now()) @map("entry_date")
+
+  @@index([tenantId])
+  @@map("livestock_batch")
+}
+
+model WeighingEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  batchId    String?  @map("batch_id") @db.Uuid
+  animalId   String?  @map("animal_id") @db.Uuid
+  date       DateTime
+  weight     Decimal  @db.Decimal(10, 2)
+  method     String   @default("manual")
+  clientUuid String?  @map("client_uuid")
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, date])
+  @@map("weighing_event")
+}
+
+model HealthEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  batchId     String?   @map("batch_id") @db.Uuid
+  animalId    String?   @map("animal_id") @db.Uuid
+  date        DateTime
+  type        String
+  productId   String?   @map("product_id") @db.Uuid
+  dose        Decimal?  @db.Decimal(10, 2)
+  nextDueDate DateTime? @map("next_due_date")
+  clientUuid  String?   @map("client_uuid")
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, date])
+  @@map("health_event")
+}
+
+model InputProduct {
+  id       String   @id @default(uuid()) @db.Uuid
+  tenantId String   @map("tenant_id") @db.Uuid
+  name     String
+  category String
+  unit     String
+  minStock Decimal? @map("min_stock") @db.Decimal(14, 2)
+  avgCost  Decimal? @map("avg_cost") @db.Decimal(18, 4)
+
+  @@index([tenantId])
+  @@map("input_product")
+}
+
+model InventoryMovement {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  productId  String   @map("product_id") @db.Uuid
+  type       String // in | out | transfer | adjust
+  qty        Decimal  @db.Decimal(14, 2)
+  unitCost   Decimal? @map("unit_cost") @db.Decimal(18, 4)
+  sourceType String?  @map("source_type")
+  sourceId   String?  @map("source_id") @db.Uuid
+  date       DateTime @default(now())
+  clientUuid String?  @map("client_uuid")
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, date])
+  @@map("inventory_movement")
+}
