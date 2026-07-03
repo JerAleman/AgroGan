@@ -337,6 +337,56 @@ model AgriculturalActivity {
   @@index([tenantId])
 }
 
+// ─────────────────────────── Maquinaria ───────────────────────────
+
+model Machine {
+  id              String   @id @default(uuid())
+  tenantId        String
+  name            String
+  type            String   @default("otro") // tractor | cosechadora | fumigadora | sembradora | camion | otro
+  ownership       String   @default("own") // own | contracted
+  acquisitionCost Float    @default(0)
+  hourMeter       Float    @default(0)
+  createdAt       DateTime @default(now())
+
+  tasks       MachineTask[]
+  maintenance MaintenanceOrder[]
+
+  @@index([tenantId])
+}
+
+model MachineTask {
+  id          String   @id @default(uuid())
+  tenantId    String
+  machineId   String
+  description String?
+  hours       Float    @default(0)
+  hectares    Float    @default(0)
+  fuelQty     Float    @default(0)
+  date        DateTime @default(now())
+  clientUuid  String?
+
+  machine Machine @relation(fields: [machineId], references: [id])
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, machineId])
+}
+
+model MaintenanceOrder {
+  id          String    @id @default(uuid())
+  tenantId    String
+  machineId   String
+  type        String // preventive | corrective
+  cost        Float     @default(0)
+  description String?
+  date        DateTime  @default(now())
+  nextDue     DateTime?
+
+  machine Machine @relation(fields: [machineId], references: [id])
+
+  @@index([tenantId, machineId])
+}
+
 // ─────────────────────────── IA / Alertas / Auditoría ───────────────────────────
 
 model Alert {

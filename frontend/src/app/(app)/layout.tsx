@@ -8,7 +8,9 @@ import { api, clearToken, getToken } from '@/lib/api';
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: '📊' },
   { href: '/ganaderia', label: 'Ganadería', icon: '🐄' },
+  { href: '/agricultura', label: 'Agricultura', icon: '🌾' },
   { href: '/inventario', label: 'Inventario', icon: '📦' },
+  { href: '/maquinaria', label: 'Maquinaria', icon: '🚜' },
   { href: '/copiloto', label: 'Copiloto AI', icon: '🤖' },
 ];
 

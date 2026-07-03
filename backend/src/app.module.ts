@@ -19,6 +19,8 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { AiModule } from './modules/ai/ai.module';
 import { SyncModule } from './modules/sync/sync.module';
 
+import { MachineryModule } from './modules/machinery/machinery.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -29,6 +31,7 @@ import { SyncModule } from './modules/sync/sync.module';
     InventoryModule,
     LivestockModule,
     AgricultureModule,
+    MachineryModule,
     ReportsModule,
     AiModule,
     SyncModule,
