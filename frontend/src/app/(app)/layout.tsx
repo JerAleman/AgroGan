@@ -7,10 +7,15 @@ import { api, clearToken, getToken } from '@/lib/api';
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: '📊' },
-  { href: '/ganaderia', label: 'Ganadería', icon: '🐄' },
+  { href: '/ganaderia', label: 'Ganaderia', icon: '🐄' },
+  { href: '/cria', label: 'Cria', icon: '🐂' },
+  { href: '/feedlot', label: 'Feedlot', icon: '🏗️' },
+  { href: '/tambo', label: 'Tambo', icon: '🥛' },
   { href: '/agricultura', label: 'Agricultura', icon: '🌾' },
   { href: '/inventario', label: 'Inventario', icon: '📦' },
   { href: '/maquinaria', label: 'Maquinaria', icon: '🚜' },
+  { href: '/finanzas', label: 'Finanzas', icon: '💰' },
+  { href: '/servicios', label: 'Servicios', icon: '🤝' },
   { href: '/copiloto', label: 'Copiloto AI', icon: '🤖' },
 ];
 

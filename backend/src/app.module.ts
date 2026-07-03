@@ -15,11 +15,16 @@ import { OrgModule } from './modules/org/org.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { LivestockModule } from './modules/livestock/livestock.module';
 import { AgricultureModule } from './modules/agriculture/agriculture.module';
+import { MachineryModule } from './modules/machinery/machinery.module';
+import { BreedingModule } from './modules/breeding/breeding.module';
+import { FeedlotModule } from './modules/feedlot/feedlot.module';
+import { DairyModule } from './modules/dairy/dairy.module';
+import { FinanceModule } from './modules/finance/finance.module';
+import { ServicesModule } from './modules/services/services.module';
+import { IotModule } from './modules/iot/iot.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { AiModule } from './modules/ai/ai.module';
 import { SyncModule } from './modules/sync/sync.module';
-
-import { MachineryModule } from './modules/machinery/machinery.module';
 
 @Module({
   imports: [
@@ -32,6 +37,12 @@ import { MachineryModule } from './modules/machinery/machinery.module';
     LivestockModule,
     AgricultureModule,
     MachineryModule,
+    BreedingModule,
+    FeedlotModule,
+    DairyModule,
+    FinanceModule,
+    ServicesModule,
+    IotModule,
     ReportsModule,
     AiModule,
     SyncModule,

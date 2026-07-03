@@ -1,4 +1,4 @@
-// Agro360 Cloud — Prisma schema (MVP).
+// Agro360 Cloud — Prisma schema (Full Platform).
 //
 // DEV: SQLite (ejecutable en cualquier entorno, sin dependencias externas).
 // PROD: Aurora PostgreSQL + Row Level Security por tenant_id (ver
@@ -7,7 +7,7 @@
 // En SQLite el aislamiento multi-tenant se hace a nivel de aplicación:
 // todos los servicios filtran por tenantId (getTenantId()) y hay tests que
 // verifican que un tenant no accede a datos de otro. En Postgres, la RLS es la
-// última línea de defensa adicional.
+// ultima linea de defensa adicional.
 
 generator client {
   provider = "prisma-client-js"
@@ -50,7 +50,7 @@ model User {
   @@index([tenantId])
 }
 
-// ─────────────────────────── Organización / Campo ───────────────────────────
+// ─────────────────────────── Organizacion / Campo ───────────────────────────
 
 model Company {
   id        String   @id @default(uuid())
@@ -132,7 +132,7 @@ model InputProduct {
   id        String   @id @default(uuid())
   tenantId  String
   name      String
-  category  String // fitosanitario | fertilizante | semilla | vacuna | medicamento | suplemento | combustible | repuesto | herramienta
+  category  String // fitosanitario | fertilizante | semilla | vacuna | medicamento | suplemento | combustible | repuesto | herramienta | alimento
   unit      String   @default("un")
   minStock  Float    @default(0)
   avgCost   Float    @default(0)
@@ -165,7 +165,7 @@ model InventoryMovement {
   type        String // in | out | transfer | adjust
   qty         Float
   unitCost    Float    @default(0)
-  sourceType  String? // purchase | health_event | nutrition_event | work_order | manual
+  sourceType  String? // purchase | health_event | nutrition_event | work_order | manual | feedlot_consumption
   sourceId    String?
   date        DateTime @default(now())
   clientUuid  String?
@@ -178,7 +178,7 @@ model InventoryMovement {
   @@index([tenantId, productId])
 }
 
-// ─────────────────────────── Ganadería ───────────────────────────
+// ─────────────────────────── Ganaderia ───────────────────────────
 
 model LivestockCategory {
   id       String @id @default(uuid())
@@ -257,7 +257,7 @@ model WeighingEvent {
   date       DateTime @default(now())
   weight     Float
   method     String   @default("manual") // manual | rfid | scale
-  adg        Float    @default(0) // ganancia diaria de peso (kg/día)
+  adg        Float    @default(0) // ganancia diaria de peso (kg/dia)
   clientUuid String?
 
   batch LivestockBatch @relation(fields: [batchId], references: [id])
@@ -282,6 +282,282 @@ model HealthEvent {
 
   @@unique([tenantId, clientUuid])
   @@index([tenantId, date])
+}
+
+// ─────────────────────────── Cria / Reproduccion ───────────────────────────
+
+model Sire {
+  id       String   @id @default(uuid())
+  tenantId String
+  name     String
+  breed    String?
+  sireType String   @default("toro") // toro | inseminacion_artificial
+  status   String   @default("active") // active | retired | sold
+  createdAt DateTime @default(now())
+
+  reproEvents ReproductiveEvent[]
+
+  @@index([tenantId])
+}
+
+model ReproductiveEvent {
+  id         String   @id @default(uuid())
+  tenantId   String
+  batchId    String?
+  sireId     String?
+  type       String   // servicio | tacto | paricion | destete
+  date       DateTime @default(now())
+  headCount  Int      @default(0)
+  result     String?  // prenada | vacia | normal | dificil | macho | hembra
+  notes      String?
+  clientUuid String?
+
+  sire Sire? @relation(fields: [sireId], references: [id])
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, type])
+  @@index([tenantId, date])
+}
+
+// ─────────────────────────── Feedlot ───────────────────────────
+
+model FeedlotPen {
+  id         String   @id @default(uuid())
+  tenantId   String
+  name       String
+  capacity   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  troops FeedlotTroop[]
+
+  @@index([tenantId])
+}
+
+model FeedlotTroop {
+  id           String   @id @default(uuid())
+  tenantId     String
+  penId        String
+  categoryName String
+  headCount    Int      @default(0)
+  entryWeight  Float    @default(0)
+  currentWeight Float   @default(0)
+  targetWeight Float    @default(0)
+  entryDate    DateTime @default(now())
+  projectedExitDate DateTime?
+  status       String   @default("active") // active | sold | transferred
+
+  pen          FeedlotPen         @relation(fields: [penId], references: [id])
+  consumptions FeedlotConsumption[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+}
+
+model FeedlotDiet {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  costPerKg   Float    @default(0)
+  composition String?  // JSON: lista de ingredientes y porcentajes
+  createdAt   DateTime @default(now())
+
+  consumptions FeedlotConsumption[]
+
+  @@index([tenantId])
+}
+
+model FeedlotConsumption {
+  id         String   @id @default(uuid())
+  tenantId   String
+  troopId    String
+  dietId     String
+  date       DateTime @default(now())
+  kgConsumed Float    @default(0)
+  clientUuid String?
+
+  troop FeedlotTroop @relation(fields: [troopId], references: [id])
+  diet  FeedlotDiet  @relation(fields: [dietId], references: [id])
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, date])
+}
+
+// ─────────────────────────── Tambo (Dairy) ───────────────────────────
+
+model DairyCow {
+  id         String   @id @default(uuid())
+  tenantId   String
+  identifier String   // RP o caravana
+  status     String   @default("active") // active | dry | culled
+  lactationNumber Int @default(1)
+  createdAt  DateTime @default(now())
+
+  productions DailyMilkProduction[]
+
+  @@index([tenantId])
+}
+
+model DailyMilkProduction {
+  id            String   @id @default(uuid())
+  tenantId      String
+  cowId         String
+  date          DateTime @default(now())
+  liters        Float    @default(0)
+  fatPct        Float?
+  proteinPct    Float?
+  somaticCells  Int?
+  clientUuid    String?
+
+  cow DairyCow @relation(fields: [cowId], references: [id])
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, date])
+}
+
+model MilkSettlement {
+  id          String   @id @default(uuid())
+  tenantId    String
+  periodFrom  DateTime
+  periodTo    DateTime
+  totalLiters Float    @default(0)
+  pricePerLiter Float  @default(0)
+  bonuses     Float    @default(0)
+  deductions  Float    @default(0)
+  totalAmount Float    @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// ─────────────────────────── Finanzas ───────────────────────────
+
+model FinanceAccount {
+  id         String   @id @default(uuid())
+  tenantId   String
+  name       String
+  type       String   // caja | banco | cuenta_corriente
+  currency   String   @default("ARS")
+  balance    Float    @default(0)
+  createdAt  DateTime @default(now())
+
+  transactions FinanceTransaction[]
+
+  @@index([tenantId])
+}
+
+model FinanceTransaction {
+  id           String   @id @default(uuid())
+  tenantId     String
+  accountId    String
+  type         String   // ingreso | egreso | transferencia
+  category     String   @default("general") // venta_hacienda | venta_granos | compra_insumos | servicios | honorarios | impuestos | salarios | alquiler | combustible | mantenimiento | general
+  amount       Float    @default(0)
+  description  String?
+  counterparty String?  // proveedor o cliente
+  date         DateTime @default(now())
+  clientUuid   String?
+
+  account FinanceAccount @relation(fields: [accountId], references: [id])
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, date])
+  @@index([tenantId, category])
+}
+
+model Budget {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  period      String   // ej "2025-01" o "2025-Q1" o "2025"
+  category    String
+  planned     Float    @default(0)
+  actual      Float    @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, period])
+}
+
+// ─────────────────────────── Servicios a Terceros ───────────────────────────
+
+model ServiceCustomer {
+  id       String   @id @default(uuid())
+  tenantId String
+  name     String
+  taxId    String?
+  contact  String?
+  createdAt DateTime @default(now())
+
+  orders ServiceOrder[]
+
+  @@index([tenantId])
+}
+
+model ServiceOrder {
+  id          String   @id @default(uuid())
+  tenantId    String
+  customerId  String
+  type        String   // siembra | cosecha | fumigacion | transporte | otro
+  description String?
+  areaHa      Float    @default(0)
+  amount      Float    @default(0)
+  cost        Float    @default(0)
+  status      String   @default("pending") // pending | in_progress | completed | invoiced | paid
+  date        DateTime @default(now())
+  clientUuid  String?
+
+  customer ServiceCustomer @relation(fields: [customerId], references: [id])
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, status])
+  @@index([tenantId, date])
+}
+
+// ─────────────────────────── IoT / Sensores ───────────────────────────
+
+model IotDevice {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  deviceType  String   // weather_station | scale | water_sensor | soil_sensor | gps_collar | camera
+  location    String?
+  status      String   @default("active") // active | inactive | maintenance
+  createdAt   DateTime @default(now())
+
+  measurements IotMeasurement[]
+
+  @@index([tenantId])
+}
+
+model IotMeasurement {
+  id         String   @id @default(uuid())
+  tenantId   String
+  deviceId   String
+  metric     String   // temperature | humidity | rainfall | soil_moisture | weight | water_level | wind_speed
+  value      Float
+  unit       String   @default("")
+  timestamp  DateTime @default(now())
+  clientUuid String?
+
+  device IotDevice @relation(fields: [deviceId], references: [id])
+
+  @@unique([tenantId, clientUuid])
+  @@index([tenantId, deviceId, timestamp])
+  @@index([tenantId, metric])
+}
+
+model IotAlertRule {
+  id         String   @id @default(uuid())
+  tenantId   String
+  deviceId   String?
+  metric     String
+  operator   String   // gt | lt | eq | gte | lte
+  threshold  Float
+  severity   String   @default("medium") // low | medium | high
+  message    String?
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
 }
 
 // ─────────────────────────── Agricultura ───────────────────────────
@@ -387,12 +663,12 @@ model MaintenanceOrder {
   @@index([tenantId, machineId])
 }
 
-// ─────────────────────────── IA / Alertas / Auditoría ───────────────────────────
+// ─────────────────────────── IA / Alertas / Auditoria ───────────────────────────
 
 model Alert {
   id        String   @id @default(uuid())
   tenantId  String
-  type      String // stock | sanitary | weight | reproductive | financial | climate
+  type      String // stock | sanitary | weight | reproductive | financial | climate | iot
   severity  String   @default("medium") // low | medium | high
   message   String
   entityRef String?
