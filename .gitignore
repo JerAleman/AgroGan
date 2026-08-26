@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnp/
+.yarn/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+cdk.out/
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Prisma / SQLite
+**/*.db
+**/*.db-journal
+prisma/*.db
+
+# Next.js
+next-env.d.ts
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Testing
+coverage/
